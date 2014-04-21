@@ -7,6 +7,7 @@
  *
  * Updated by: Lukas Beaton on April 21, 2014
  * Description: Support was added for multiple vimeos on a page. The code was also refactored so that it is properly namespaced without globals.
+ * URL: https://github.com/LukasBeaton/vimeo.ga.js
  */
  
 var VimeoGA = {
@@ -165,8 +166,9 @@ var VimeoGA = {
 
   _trackEvent : function(iframeEl, progress){
     var iframeSrc = iframeEl.attr('src').split('?')[0],
-        vimeoName = iframeEl.attr('vimeo-name'),
-        eventCategory = "Vimeo: "+vimeoName+" "+iframeEl.data('ga-identifier');
+        vimeoName = iframeEl.data('vimeo-name'),
+        gaIdentifier = iframeEl.data('ga-identifier'),
+        eventCategory = "Vimeo: "+vimeoName+" "+gaIdentifier;
 
     if ( VimeoGA.gatype == 1 ) {
       _gaq.push(['_trackEvent', eventCategory, progress, iframeSrc, undefined, true]);
