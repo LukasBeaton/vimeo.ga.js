@@ -16,7 +16,7 @@ Include the scripts in the body section of the HTML document, just before the `<
 <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js'></script>
 <script src="path/to/vimeo.ga.min.js"></script>
 ```
-The **data-progress** and **data-seek** attributes enable tracking of progress and skip events. 
+The **data-progress** and **data-seek** attributes enable tracking of progress and skip events. The **data-vimeo-name** is the label that will appear in Google Analytics, for example "Vimeo: VIMEO NAME". The **data-ga-identifier** is an optional field that will be appended to the label in Google Analytics.
 
 The iframe embeds a Vimeo video player and allows Vimeo to serve an HTML5 player rather than a Flash player for mobile devices that do not support Flash.
 

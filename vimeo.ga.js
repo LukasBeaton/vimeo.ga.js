@@ -1,161 +1,179 @@
 /*!
- * vimeo.ga.js | v0.2
+ * vimeo.ga.js | v1.0
+ *
+ * Based on the library created by:
  * Copyright (c) 2012 - 2013 Sander Heilbron (http://sanderheilbron.nl)
  * MIT licensed
- * Added Support for Detecting ga.js or analytics.js to use proper tracking code for each - 11/6/2013 - Robert Waddell (http://mrrobwad.blogspot.com)
+ *
+ * Updated by: Lukas Beaton on April 21, 2014
+ * Description: Support was added for multiple vimeos on a page. The code was also refactored so that it is properly namespaced without globals.
  */
  
-$(function() {
-    var f = $('iframe'),
-        url = f.attr('src').split('?')[0],
-        trackProgress = f.data('progress'), // Data attribute to enable progress tracking
-        trackSeeking = f.data('seek'), // Data attribute to enable seek tracking
-		gatype = 0; // init the gatype variable
+var VimeoGA = {
+  iframes : [],
+  gatype : 0,// init the gatype variable
+  progressMarker : {},
+
+  init : function(){
+    VimeoGA.iframes = $('iframe');
+
+    $.each(VimeoGA.iframes, function(index, iframe) {
+      var iframeId = $(iframe).attr('id');
+
+      VimeoGA.progressMarker[iframeId] = {
+        'progress25' : false,
+        'progress50' : false,
+        'progress75' : false,
+        'videoPlayed' : false,
+        'videoPaused' : false,
+        'videoSeeking' : false,
+        'videoCompleted' : false,
+        'timePercentComplete' : 0
+      }
+    });
+
+    console.log("Loading Vimeo Tracker...");
+  
+    if ( typeof(_gaq) != 'undefined' ) {
+      VimeoGA.gatype = 1; // ga.js
+    } else if ( typeof(window.ga) != 'undefined' ) {
+      VimeoGA.gatype = 2; // analytics.js
+    }
+
+    if (VimeoGA.gatype == 0) {
+      return; // Google Analytics not found
+    }
 
     // Listen for messages from the player
     if (window.addEventListener) {
-        window.addEventListener('message', onMessageReceived, false);
+      window.addEventListener('message', VimeoGA._onMessageReceived, false);
     } else {
-        window.attachEvent('onmessage', onMessageReceived, false);
+      window.attachEvent('onmessage', VimeoGA._onMessageReceived, false);
+    }
+  },
+
+
+  // Handle messages received from the player
+  _onMessageReceived : function(e) {
+    if (e.origin !== "http://player.vimeo.com" && e.origin !== "https://player.vimeo.com") {
+      return;
+    }
+  
+    var data = JSON.parse(e.data),
+        iframeEl = $("#"+data.player_id),
+        iframeId = iframeEl.attr('id');
+
+    console.log("Here is the data...")
+    console.log(data)
+
+    switch (data.event) {
+      case 'ready':
+        VimeoGA._onReady();
+        break;
+      case 'playProgress':
+        VimeoGA._onPlayProgress(data.data, iframeEl);
+        break;
+      case 'seek':
+        if (iframeEl.data('seek') && !VimeoGA.progressMarker[iframeId]['videoSeeking']) {
+          VimeoGA._trackEvent(iframeEl, 'Skipped video forward or backward')
+          VimeoGA.progressMarker[iframeId]['videoSeeking'] = true; // Avoid subsequent seek trackings
+        }
+        break;
+      case 'play':
+        if (!VimeoGA.progressMarker[iframeId]['videoPlayed']) {
+          VimeoGA._trackEvent(iframeEl, 'Started video')
+          VimeoGA.progressMarker[iframeId]['videoPlayed'] = true; // Avoid subsequent play trackings
+        }
+        break;
+      case 'pause':
+        VimeoGA._onPause(iframeEl);
+        break;
+      case 'finish':
+        if (!VimeoGA.progressMarker[iframeId]['videoCompleted']) {
+          VimeoGA._trackEvent(iframeEl, 'Completed video')
+          VimeoGA.progressMarker[iframeId]['videoCompleted'] = true; // Avoid subsequent finish trackings
+        }
+        break;
+    }//end switch
+  },
+
+  // Helper function for sending a message to the player
+  _post : function(action, value, iframe){
+    var data = {
+        method: action
+    };
+
+    if (value) {
+        data.value = value;
     }
 
-    // Handle messages received from the player
-    function onMessageReceived(e) {
-        if (e.origin !== "http://player.vimeo.com") {
-			return;
-        }
-		
-		if ( typeof(_gaq) != 'undefined' ) {
-			gatype = 1; // ga.js
-		} else if ( typeof(window.ga) != 'undefined' ) {
-			gatype = 2; // analytics.js
-		}
+    var iframeSrc = $(iframe).attr('src').split('?')[0];
+    iframe.contentWindow.postMessage(JSON.stringify(data), iframeSrc);
+  },
 
-		if (gatype == 0) {
-			return; // Google Analytics not found
-		}
-		
-        var data = JSON.parse(e.data);
+  _onReady : function() {
+    $.each(VimeoGA.iframes, function(index, iframe) {
+      VimeoGA._post('addEventListener', 'play', iframe);
+      VimeoGA._post('addEventListener', 'seek', iframe);
+      VimeoGA._post('addEventListener', 'pause', iframe);
+      VimeoGA._post('addEventListener', 'finish', iframe);
+      VimeoGA._post('addEventListener', 'playProgress', iframe);
+    })
+  },
+  
+  _onPause : function(iframeEl) {
+    var iframeId = iframeEl.attr('id');
 
-        switch (data.event) {
-        case 'ready':
-            onReady();
-            break;
-
-        case 'playProgress':
-            onPlayProgress(data.data);
-            break;
-
-        case 'seek':
-            if (trackSeeking && !videoSeeking) {
-				if ( gatype == 1 ) {
-					_gaq.push(['_trackEvent', 'Vimeo', 'Skipped video forward or backward', url, undefined, true]);
-				} else if ( gatype == 2 ) {
-					ga('send', 'event', 'Vimeo', 'Skipped video forward or backward', url);
-				}
-                videoSeeking = true; // Avoid subsequent seek trackings
-            }
-            break;
-
-        case 'play':
-            if (!videoPlayed) {
-				if ( gatype == 1 ) {
-					_gaq.push(['_trackEvent', 'Vimeo', 'Started video', url, undefined, true]);             
-				} else if ( gatype == 2 ) {
-					ga('send', 'event', 'Vimeo', 'Started video', url);
-				}
-                videoPlayed = true; //  Avoid subsequent play trackings
-            }
-            break;
-
-        case 'pause':
-            onPause();
-            break;
-
-        case 'finish':
-            if (!videoCompleted) {
-				if ( gatype == 1 ) {
-					_gaq.push(['_trackEvent', 'Vimeo', 'Completed video', url, undefined, true]);       
-				} else if ( gatype == 2 ) {
-					ga('send', 'event', 'Vimeo', 'Completed video', url);
-				}
-                videoCompleted = true; // Avoid subsequent finish trackings
-            }
-            break;
-        }
+    if (VimeoGA.progressMarker[iframeId]['timePercentComplete'] < 99 && !VimeoGA.progressMarker[iframeId]['videoPaused']) {
+      VimeoGA._trackEvent(iframeEl, 'Paused video')
+      VimeoGA.progressMarker[iframeId]['videoPaused'] = true; // Avoid subsequent pause trackings
     }
+  },
 
-    // Helper function for sending a message to the player
-    function post(action, value) {
-        var data = {
-            method: action
-        };
+  // Tracking video progress 
+  _onPlayProgress : function(data, iframeEl) {
+    var progress,
+        iframeId = iframeEl.attr('id');
 
-        if (value) {
-            data.value = value;
-        }
-
-        f[0].contentWindow.postMessage(JSON.stringify(data), url);
-    }
-
-    function onReady() {
-        post('addEventListener', 'play');
-        post('addEventListener', 'seek');
-        post('addEventListener', 'pause');
-        post('addEventListener', 'finish');
-        post('addEventListener', 'playProgress');
-        progress25 = false;
-        progress50 = false;
-        progress75 = false;
-        videoPlayed = false;
-        videoPaused = false;
-        videoSeeking = false;
-        videoCompleted = false;
+    VimeoGA.progressMarker[iframeId]['timePercentComplete'] = Math.round((data.percent) * 100); // Round to a whole number
+    
+    if (!iframeEl.data('progress')) {
+      return;
     }
     
-    function onPause() {
-     if (timePercentComplete < 99 && !videoPaused) {
-		if ( gatype == 1 ) {
-			_gaq.push(['_trackEvent', 'Vimeo', 'Paused video', url, undefined, true]);
-		} else if ( gatype == 2 ) {
-			ga('send', 'event', 'Vimeo', 'Paused video', url);
-		}
-		videoPaused = true; // Avoid subsequent pause trackings
-      }
-     }
-
-    // Tracking video progress 
-    function onPlayProgress(data) {
-        timePercentComplete = Math.round((data.percent) * 100); // Round to a whole number
-        
-        if (!trackProgress) {
-         return;
-        }
-        
-        var progress;
-        
-        if (timePercentComplete > 24 && !progress25) {
-            progress = 'Played video: 25%';
-            progress25 = true;
-        }
-
-        if (timePercentComplete > 49 && !progress50) {
-            progress = 'Played video: 50%';
-            progress50 = true;
-        }
-
-        if (timePercentComplete > 74 && !progress75) {
-            progress = 'Played video: 75%';
-            progress75 = true;
-        }
-        
-        if (progress) {
-			if ( gatype == 1 ) {
-				_gaq.push(['_trackEvent', 'Vimeo', progress, url, undefined, true]);
-			} else if ( gatype == 2 ) {
-				ga('send', 'event', 'Vimeo', progress, url);
-			}
-        }
+    if (VimeoGA.progressMarker[iframeId]['timePercentComplete'] > 24 && !VimeoGA.progressMarker[iframeId]['progress25']) {
+      progress = 'Played video: 25%';
+      VimeoGA.progressMarker[iframeId]['progress25'] = true;
     }
 
+    if (VimeoGA.progressMarker[iframeId]['timePercentComplete'] > 49 && !VimeoGA.progressMarker[iframeId]['progress50']) {
+      progress = 'Played video: 50%';
+      VimeoGA.progressMarker[iframeId]['progress50'] = true;
+    }
+
+    if (VimeoGA.progressMarker[iframeId]['timePercentComplete'] > 74 && !VimeoGA.progressMarker[iframeId]['progress75']) {
+      progress = 'Played video: 75%';
+      VimeoGA.progressMarker[iframeId]['progress75'] = true;
+    }
+    
+    if (progress) {
+      VimeoGA._trackEvent(iframeEl, progress)
+    }
+  },
+
+  _trackEvent : function(iframeEl, progress){
+    var iframeSrc = iframeEl.attr('src').split('?')[0],
+        vimeoName = iframeEl.attr('vimeo-name'),
+        eventCategory = "Vimeo: "+vimeoName+" "+iframeEl.data('ga-identifier');
+
+    if ( VimeoGA.gatype == 1 ) {
+      _gaq.push(['_trackEvent', eventCategory, progress, iframeSrc, undefined, true]);
+    } else if ( VimeoGA.gatype == 2 ) {
+      ga('send', 'event', eventCategory, progress, iframeSrc);
+    }
+  }
+};
+
+$(function(){
+  VimeoGA.init();  
 });
