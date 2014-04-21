@@ -32,7 +32,8 @@ var VimeoGA = {
       }
     });
 
-    console.log("Loading Vimeo Tracker...");
+    // used for debugging
+    //console.log("Loading Vimeo Tracker...");
   
     if ( typeof(_gaq) != 'undefined' ) {
       VimeoGA.gatype = 1; // ga.js
@@ -63,8 +64,9 @@ var VimeoGA = {
         iframeEl = $("#"+data.player_id),
         iframeId = iframeEl.attr('id');
 
-    console.log("Here is the data...")
-    console.log(data)
+    // used for debugging
+    //console.log("Here is the data...")
+    //console.log(data)
 
     switch (data.event) {
       case 'ready':
